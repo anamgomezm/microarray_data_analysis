@@ -1,0 +1,779 @@
+---
+title: |
+  | \vspace{-1.1cm} \Huge{\textcolor{bondiblue}{PEC 1}}
+  | \vspace{0.2cm} \huge{\textit{Análisis de Datos Ómicos}} \vspace{0.2cm}
+  | \vspace{0.1cm} \large{Máster de Bioinformática y Bioestadística UOC y UB} \vspace{0.1cm}
+  | \vspace{0.2cm} \large{Ana M Gómez Martínez} \vspace{0.2cm}
+  | \vspace{0.1cm} `r format(Sys.Date(),"%e de %B, %Y")`  \vspace{0.1cm}
+fontsize: 11pt 
+output: pdf_document
+params:
+  data: data4.csv
+header-includes:
+  - \definecolor{bazaar}{rgb}{0.6, 0.47, 0.48}
+  - \definecolor{burgundy}{rgb}{0.0, 0.58, 0.71}
+  - \usepackage{tocloft} # para la tabla de contenidos
+  - \setlength\cftparskip{-1pt}
+  - \setlength\cftbeforesecskip{10pt}
+  - \setlength\cftaftertoctitleskip{2pt}
+  - \usepackage{etoolbox} 
+  - \makeatletter 
+  - \preto{\@verbatim}{\topsep=0pt \partopsep=0pt} # para reducir el espacio entre el output del chunk
+  - \usepackage{hyperref}
+  - \definecolor{cyan}{rgb}{0.0, 0.72, 0.92}
+  - \definecolor{bondiblue}{rgb}{0.0, 0.58, 0.71}
+  - \definecolor{tyrianpurple}{rgb}{0.4, 0.01, 0.24}
+  - \definecolor{amethyst}{rgb}{0.6, 0.4, 0.8}
+  - \usepackage{hyperref}
+  - \definecolor{aquamarine}{rgb}{0.5, 1.0, 0.83}
+  - \definecolor{armygreen}{rgb}{0.29, 0.33, 0.13}
+# latex_engine: xelatex
+---
+
+\tableofcontents
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+```
+
+# \textcolor{bondiblue}{Abstract}
+
+En este informe se plantean las cuestiones que deseamos responder (\textcolor{amethyst}{\hyperref[objetivos]{Objetivos}}) con nuestro estudio, se realizan los análisis necesarios (\textcolor{amethyst}{\hyperref[materiales]{Pipeline del análisis, qué se ha hecho en cada paso y resultados}}) y una discusión (\textcolor{amethyst}{\hyperref[discusion]{Discusión}}) de los mismos.
+
+Así pues, vamos a investigar el Síndrome de Turner (ST), que es el trastorno de aneuploidía del cromosoma X más común en las mujeres. Su cariotipo predominante es `45X`, una pérdida completa del segundo cromosoma sexual. Según el origen parental del cromosoma X único, los pacientes con 45X se pueden dividir en dos grupos: `45Xm` (cromosoma X heredado materno) y `45Xp` (heredado paterno). 
+
+# \textcolor{bondiblue}{Objetivos} \label{objetivos}
+
+Queremos ver el impacto del **cromosoma X de los padres en el fenotipo ST**, ya que se ha encontrado que los pacientes con ST de `45Xm` y `45Xp` se asocian con diferentes grados de gravedad en el fenotipo. Para ello, vamos a analizar la expresión génica diferencial de `45Xm` y `45Xp` mediante microarrays, analizando también la expresión génica para `46XX` hembra normal, **con el fin de investigar los cambios en la expresión génica de todo el genoma entre pacientes con monosomía `X` ST y mujeres normales**.
+
+# \textcolor{bondiblue}{Materiales y métodos} \label{materiales}
+
+**Nota:** El código completo se muestra en el \textcolor{amethyst}{\hyperref[apendice]{Apéndice}}, ya que ahora, para facilitar la lectura, mostraremos solo la parte del código más relevante.
+
+## \textcolor{bondiblue}{Naturaleza de los datos, tipo de experimento, diseño experimental, tipo de microarrays utilizados}
+
+Los datos se encuentran en GEO con identificador `GSE46687`, donde obtuvimos la información del estudio, en el que se realizaron perfiles de expresion de arrays. Este es el \textcolor{amethyst}{\href{https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE46687}{link}}. De ahí pudimos obtener los archivos *.CEL* para realizar el estudio. Como hemos visto en teoría, estos archivos son datos de bajo nivel de Arrays de un color. Más información acerca del tipo del array: [HG-U133_Plus_2] Affymetrix Human Genome U133 Plus 2.0 Array
+
+Con respecto a nuestro diseño experimental, tenemos 18 unidades experimentales (individuos), y trabajaremos con el factor `cariotipo`, que tiene 3 niveles (3 grupos), que son `45Xp`, `45Xm` y `46XX.` Cada nivel tiene un total de 6 réplicas, las cuales hemos escogido al azar (`selectSamples(77146010`)), como vemos en el siguiente apartado de *Selección de muestras*.
+
+## \textcolor{bondiblue}{Selección de muestras}
+
+Seleccionamos las muestras con las que trabajaremos:
+```{r eval=FALSE, message = FALSE, include=FALSE}
+setwd(".")
+dir.create("data")
+dir.create("results")
+```
+
+```{r, message = FALSE, include=FALSE}
+selectSamples<- function (myID){
+set.seed(myID)
+selected <- c(sample(1:10, 6),11, sample(12:26, 5), sample(27:36,6))
+selected <- sort(selected)
+}
+```
+
+```{r, message = FALSE}
+mySelected <- selectSamples(77146010)
+targetsAll <-read.csv(file="targetsAll.csv", row.names = 1, head=TRUE)
+myTargets <- targetsAll[mySelected,]
+```
+```{r eval=FALSE, include=FALSE}
+write.csv(myTargets, file = "./data/myTargets.csv")
+```
+```{r, message = FALSE, warning=FALSE, results="hide"}
+library(GEOquery)
+filePaths = getGEOSuppFiles("GSE46687")
+
+library(oligo)
+celFiles <- list.celfiles("./data2", full.names = TRUE)
+
+library(Biobase)
+my.targets <-read.AnnotatedDataFrame(file.path("./data2","myTargets.csv"),
+                                     header = TRUE, row.names = 1, sep=",") 
+
+rawData <- read.celfiles(celFiles, phenoData = my.targets)
+```
+
+# \textcolor{bondiblue}{Pipeline del análisis, qué se ha hecho en cada paso y Resultados} \label{resultados}
+
+**NO ES PRECISO entrar en el detalle de los métodos, más bien hacer una descripción cualitativa indicando por qué se ha llevado a cabo cada paso, y cual ha sido el “input” suministrado al procedimiento y el “output” obtenido.**
+
+$\rightarrow$ Lo he organizado así porque considero que facilita la lectura y además conseguimos que el documento no sea tan extenso.
+
+> **1. Identificar qué grupos hay y a qué grupo pertenece cada muestra.**
+
+Echando un vistazo a `my.targets` vemos que hay 3 grupos según el cariotipo, como ya hemos comentado previamente, y el nombre de las muestras aparece en la columna de `X.title.`. Por tanto, nombraremos las columnas del `rawData` con estos nombres de las muestras y mostraremos el `head`. Es importante que nos fijemos en el parámetro `Annotation`, nos servirá para más adelante.
+
+```{r, message = FALSE}
+colnames(rawData) <- my.targets@data$X.title.
+head(rawData)
+```
+
+> **2. Exploración y control de calidad de los datos crudos**
+
+El siguiente paso es hacer un control de calidad del rawData. Para ello, utilizamos la función `arrayQualityMetrics`.
+
+```{r eval=FALSE, message = FALSE}
+library(arrayQualityMetrics)
+arrayQualityMetrics(rawData)
+```
+
+\begin{center}
+\includegraphics[width=5cm, height=8cm]{fig1.png}
+
+{\small {\it {Fig.1: }}Estudio de calidad de nuestros datos crudos} 
+\end{center}
+
+Hay un par de muestras, `Xp_rep4` y `Xp_rep10` que tienen dos cruces (outliers detectados por dos métodos distintos), lo cual no es muy bueno.
+
+Por otro lado, mediante un Análisis de Componentes Principales, obtenemos el siguiente gráfico:
+
+```{r echo=FALSE, fig.height=3, fig.width=5, fig.align="center", message=FALSE, warning=FALSE}
+library(ggplot2)
+library(ggrepel)
+plotPCA3 <- function (datos, labels, factor, title, scale,colores, size = 1.5, glineas = 0.25) {
+   data <- prcomp(t(datos),scale=scale)
+   # plot adjustments
+   dataDf <- data.frame(data$x)
+   Group <- factor
+   loads <- round(data$sdev^2/sum(data$sdev^2)*100,1)
+   # main plot
+   p1 <- ggplot(dataDf,aes(x=PC1, y=PC2)) +
+     theme_classic() +
+     geom_hline(yintercept = 0, color = "gray70") +
+     geom_vline(xintercept = 0, color = "gray70") +
+     geom_point(aes(color = Group), alpha = 0.55, size = 3) +
+     coord_cartesian(xlim = c(min(data$x[,1])-5,max(data$x[,1])+5)) +
+     scale_fill_discrete(name = "Group")
+   # avoiding labels superposition
+   p1 + geom_text_repel(aes(y = PC2 + 0.25, label = labels),segment.size = 0.25, size = size) + 
+     labs(x = c(paste("PC1",loads[1],"%")),y=c(paste("PC2",loads[2],"%"))) +  
+     ggtitle(paste("Principal Component Analysis for: ",title,sep=" "))+ 
+     theme(plot.title = element_text(hjust = 0.5)) +
+     scale_color_manual(values=colores)
+}
+
+
+plotPCA3(exprs(rawData), labels = myTargets$title, factor = myTargets$karyotype, 
+          title="Raw data", scale = FALSE, size = 3, 
+          colores = c("#9966CC", "#0095B6", "#960018"))
+```
+
+Vemos que para el grupo normal `46XX` y el `45Xp`, sí que se observan diferencias claras en cuanto a la distribución en la gráfica.
+
+También podemos hacer un boxplot:
+```{r echo=FALSE, fig.height=4, fig.width=6, fig.align="center", message=FALSE, warning=FALSE}
+boxplot(rawData, cex.axis=0.5, las=2,  which="all", 
+        col = c(rep("#960018", 6), rep("#9966CC", 6), rep("#0095B6", 6)),
+        main="Distribution of raw intensity values")
+```
+
+Vemos que la distribución no es muy homogénea, por lo que normalizar es buena idea.
+
+> **3. Normalización**
+
+Esta normalización puede realizarse fácilmente con la función `rma`, a la cual le damos los datos crudos, y obtenemos los normalizados.
+
+```{r, message = FALSE, results="hide"}
+eset_rma <- rma(rawData)
+```
+
+> **4. [Control de calidad de los datos normalizados] (opcional)**
+
+Como ya hemos hecho anteriormente, para medir la calidad podemos volver a emplear la función `arrayQualityMetrics`. Esta vez la utilizaremos sobre los datos normalizados `eset_rma`, y esto es lo que obtenemos:
+
+```{r eval=FALSE, message = FALSE, include=FALSE}
+arrayQualityMetrics(eset_rma, outdir = file.path("./results", "QCDir.Norm"), force=TRUE)
+```
+
+\begin{center}
+\includegraphics[width=5cm, height=8cm]{fig2.png}
+
+{\small {\it {Fig.2: }}Estudio de calidad de nuestros datos normalizados} 
+\end{center}
+
+Ahora solo hay una muestra con una cruz.
+
+También podemos hacer otra vez en PCA:
+
+```{r, fig.height=3, fig.width=5, fig.align="center", message=FALSE, warning=FALSE, echo=FALSE}
+plotPCA3(exprs(eset_rma), labels = myTargets$title, factor = myTargets$karyotype, 
+          title="Normalized data", scale = FALSE, size = 3, 
+          colores = c("#9966CC", "#0095B6", "#960018", "yellow"))
+```
+
+Observamos que hay diferencia entre el grupo normal `46XX` con los otros dos grupos, que es lo que a priori esperaríamos. 
+
+Con respecto al Boxplot:
+
+```{r,fig.height=4, fig.width=6, fig.align="center", message=FALSE, warning=FALSE, echo=FALSE}
+boxplot(eset_rma, cex.axis=0.5, las=2,  which="all", 
+          col = c(rep("#960018", 6), rep("#9966CC", 6), rep("#0095B6", 6)),
+          main="Boxplot for arrays intensity: Normalized Data")
+```
+
+Ahora sí presentan una distribución homogénea.
+
+> **5. Filtraje no específico [opcional]**
+
+El filtraje no específico nos permite eliminar genes que varían poco entre condiciones o que queremos quitar por otras razones, como por ejemplo, que no tengamos anotaciones sobre ellos. Así también podemos eliminar ruido de fondo. Aunque hay controversia con este paso, por que se puede eliminar información de forma no intencionada.
+
+Es importante filtrar según los datos de anotación del paquete correspondiente, en este caso: `hgu133plus2.db`. Aquí, estamos anotando los datos normalizados `eset_rma` y los filtramos con la función `nsFilter`, obteniendo ahora una selección de genes que nosotros hemos indicado en el código. 
+
+```{r, message = FALSE}
+library(genefilter)
+# BiocManager::install("hgu133plus2.db")
+library(hgu133plus2.db)
+annotation(eset_rma) <- "hgu133plus2.db"
+filtered <- nsFilter(eset_rma, 
+                      require.entrez = TRUE, remove.dupEntrez = TRUE,
+                      var.filter=TRUE, var.func=IQR, var.cutoff=0.75, 
+                      filterByQuantile=TRUE, feature.exclude = "^AFFX")
+```
+
+```{r, message = FALSE, include=FALSE}
+print(filtered$filter.log)
+```
+
+```{r, message = FALSE}
+eset_filtered <-filtered$eset
+eset_filtered
+```
+
+Ahora tenemos `5040` genes.
+
+```{r eval=FALSE, message = FALSE, include=FALSE}
+# Guardemos los datos en este punto.
+write.csv(exprs(eset_rma), file="./results/normalized.Data.csv")
+write.csv(exprs(eset_filtered), file="./results/normalized.Filtered.Data.csv")
+save(eset_rma, eset_filtered, file="./results/normalized.Data.Rda")
+```
+
+> **6. Identificación de genes diferencialmente expresados** 
+
+Lo primero que haremos es la matriz de diseño:
+
+```{r, message = FALSE, echo = FALSE}
+if (!exists("eset_filtered")) load (file="./results/normalized.Data.Rda")
+library(limma)
+designMat<- model.matrix(~0+X.karyotype., pData(eset_filtered))
+colnames(designMat) <- c("Xm45", "Xp45","XX46")
+print(designMat)
+```
+
+A continuación, haremos la matriz de contraste. Queremos ver si hay diferencias entre los grupos 46XX, 65Xm y 45 Xp. Por tanto, nuestra matriz de contraste es la siguiente:
+```{r, message = FALSE, echo = FALSE}
+cont.matrix <- makeContrasts (Xm45vsXp45 = Xm45-Xp45,
+                              Xm45vsXX46 = Xm45-XX46,
+                              Xp45vsXX46 = Xp45-XX46,
+                              levels=designMat)
+print(cont.matrix)
+```
+
+El siguiente paso es hacer la estimación del modelo, para el cual utilizaremos las funciones `lmFit`, `contrasts.fit` y `eBayes`. Así, con nuestros datos normalizados y filtrados `eset_filtered` y con la matriz de diseño y contraste, será posible hacer el modelo.
+
+```{r, message = FALSE}
+library(limma)
+fit<-lmFit(eset_filtered, designMat)
+fit.main<-contrasts.fit(fit, cont.matrix)
+fit.main<-eBayes(fit.main)
+```
+
+Por tanto, ahora con la función topTable, podemos obtener los DEGs (genes diferencialmente expresados), entre los grupos que nos interesan. Mostraremos el `head` de `topTab.Xm45vsXp45`
+```{r, message = FALSE, include=FALSE}
+topTab.Xm45vsXp45 <- topTable(fit.main, number=nrow(fit.main), coef="Xm45vsXp45", 
+                              adjust="fdr") 
+topTab.Xm45vsXX46 <- topTable(fit.main, number=nrow(fit.main), coef="Xm45vsXX46", 
+                              adjust="fdr") 
+topTab.Xp45vsXX46 <- topTable(fit.main, number=nrow(fit.main), coef="Xp45vsXX46", 
+                              adjust="fdr") 
+```
+
+```{r}
+head(topTab.Xm45vsXp45)
+```
+
+> **7. Anotación de los resultados**
+
+En este paso, creamos la función `annotatedTopTable`, que anotará los genes almacenados en las variables topTable (`topTab.Xm45vsXp45`, `topTab.Xm45vsXX46` y `topTab.Xp45vsXX46`) que acabamos de obtener justo en el paso anterior, con el paquete correspondiente `hgu133plus2.db`.
+
+```{r, message = FALSE, include=FALSE}
+annotatedTopTable <- function(topTab, anotPackage){
+   topTab <- cbind(PROBEID=rownames(topTab), topTab)
+   myProbes <- rownames(topTab)
+   thePackage <- eval(parse(text = anotPackage))
+   geneAnots <- select(thePackage, myProbes, c("SYMBOL", "ENTREZID", "GENENAME"))
+   annotatedTopTab<- merge(x=geneAnots, y=topTab, by.x="PROBEID", by.y="PROBEID")
+ return(annotatedTopTab)
+}
+
+topAnnotated.Xm45vsXp45 <- annotatedTopTable(topTab.Xm45vsXp45,
+anotPackage="hgu133plus2.db")
+topAnnotated.Xm45vsXX46 <- annotatedTopTable(topTab.Xm45vsXX46,
+anotPackage="hgu133plus2.db")
+topAnnotated.Xp45vsXX46 <- annotatedTopTable(topTab.Xp45vsXX46,
+anotPackage="hgu133plus2.db")
+```
+
+```{r eval=FALSE, message = FALSE, include=FALSE}
+write.csv(topAnnotated.Xm45vsXp45, file="./results/topAnnotated.Xm45vsXp45.csv")
+write.csv(topAnnotated.Xm45vsXX46, file="./results/topAnnotated.Xm45vsXX46.csv")
+write.csv(topAnnotated.Xp45vsXX46, file="./results/topAnnotated.Xp45vsXX46.csv")
+```
+
+> **8. Comparación entre distintas comparaciones (si hay más de una comparación, ver qué genes han sido seleccionados en más de una comparación)**
+
+En este paso utilizaremos la función `decideTests` del paquete `limma`
+
+```{r, message = FALSE, echo=FALSE}
+library(limma)
+res<-decideTests(fit.main, method="separate", adjust.method="fdr", p.value=0.1, lfc=1)
+sum.res.rows<-apply(abs(res),1,sum)
+res.selected<-res[sum.res.rows!=0,] 
+print(summary(res))
+```
+
+Vamos a interpretar esta tabla. Por ejemplo, para el contraste (grupo) `Xm45vsXp45`, hay 0 genes regulados aguas abajo y aguas arriba que presenten expresión diferencial. Para `Xm45vsXX46`, hay `314` regulados aguas abajo y `52` regulados aguas arriba que presentan expresión diferencial. Y para `Xp45vsXX46` hay `169` regulados aguas abajo y `47` aguas arriba con expresión diferencial.
+
+Utilizaremos un diagrama de Venn para ver el número de genes que se expresan diferencialmente entre los distintos grupos. Son comparaciones múltiples porque tenemos tres grupos que estamos comparando. Si quisiéramos por ejemplo mirar estos genes en solo uno de los grupos, en ese caso podríamos utilizar un `Volcano plot`.
+
+```{r,fig.height=4, fig.width=5, fig.align="center", message=FALSE, warning=FALSE, echo=FALSE}
+vennDiagram(res.selected, cex=0.9)
+title("Genes in common between the three comparisons\n Genes selected with FDR < 0.1 and logFC > 1")
+```
+
+Como vemos, para el grupo `Xm45vsXp45` el número de genes en común es 0, mientras que `Xm45vsXX46` y `Xp45vsXX46` sí tienen genes en común.
+
+También podemos hacer un *Heatmap* para ver los perfiles de expresión:
+
+```{r fig.height=5, fig.width=6, fig.align="center", message=FALSE, warning=FALSE, echo=FALSE}
+probesInHeatmap <- rownames(res.selected)
+HMdata <- exprs(eset_filtered)[rownames(exprs(eset_filtered)) %in% probesInHeatmap,]
+library(tidyselect)
+geneSymbols <- select(hgu133plus2.db, rownames(HMdata), c("SYMBOL"))
+SYMBOLS<- geneSymbols$SYMBOL
+rownames(HMdata) <- SYMBOLS
+#write.csv(HMdata, file = file.path("./results/data4Heatmap.csv"))
+
+my_palette <- colorRampPalette(c("#0095B6", "#9966CC"))(n = 299)
+library(gplots)
+
+heatmap.2(HMdata,
+           Rowv = TRUE,
+           Colv = TRUE,
+           dendrogram = "both",
+           main = "Differentially expressed genes \n FDR < 0,1, logFC >=1",
+           scale = "row",
+           col = my_palette,
+           sepcolor = "white",
+           sepwidth = c(0.05,0.05),
+           cexRow = 0.5,
+           cexCol = 0.9,
+           key = TRUE,
+           keysize = 1.5,
+           density.info = "histogram",
+           ColSideColors = c(rep("#960018",6),rep("#9966CC",6), rep("#0095B6",6)),
+           tracecol = NULL,
+           srtCol = 30)
+
+```
+
+> **9. Análisis de significación biológica (“Gene Enrichment Analysis”)**
+
+El análisis de significación biológica estudia las funciones de los genes buscando sus anotaciones en bases de datos de anotación funcional.
+
+El primer paso es preparar la lista de genes que analizaremos:
+
+```{r, message = FALSE, echo=FALSE}
+listOfTables <- list(Xm45vsXp45 = topTab.Xm45vsXp45,
+                     Xm45vsXX46  = topTab.Xm45vsXX46,
+                     Xp45vsXX46 = topTab.Xp45vsXX46)
+
+listOfSelected <- list()
+
+for (i in 1:length(listOfTables)){
+   # select the toptable
+   topTab <- listOfTables[[i]]
+   # select the genes to be included in the analysis
+   whichGenes<-topTab["adj.P.Val"]<0.15
+   selectedIDs <- rownames(topTab)[whichGenes]
+   # convert the ID to Entrez
+   EntrezIDs<- select(hgu133plus2.db, selectedIDs, c("ENTREZID"))
+   EntrezIDs <- EntrezIDs$ENTREZID
+   listOfSelected[[i]] <- EntrezIDs
+   names(listOfSelected)[i] <- names(listOfTables)[i]
+}
+
+sapply(listOfSelected, length)
+```
+
+Como vemos, hay 0 genes para el grupo `Xm45vsXp45`, por tanto, tomaremos las otras dos columnas.
+
+El siguiente paso es obtener los identificadores *Entrez*. Vamos a definir que nuestro universo contenga todos los genes que tengan al menos una anotación en Gene Ontology. Estamos utilizando paquetes de anotaciones de organismos, de Gene Ontology (`org.Hs.egGO`) y de rutas metabólicas (`org.Hs.egPATH`).
+
+```{r, message = FALSE, include=FALSE}
+mapped_genes2GO <- mappedkeys(org.Hs.egGO)
+mapped_genes2KEGG <- mappedkeys(org.Hs.egPATH)
+mapped_genes <- union(mapped_genes2GO , mapped_genes2KEGG)
+```
+
+Así pues, ya podemos utilizar el paquete `ReactomePA` para hacer el análisis de significación biológica, el cual lo haremos sobre la segunda y tercera lista.
+
+```{r, message = FALSE, echo=FALSE, warning=FALSE}
+library(ReactomePA)
+ 
+listOfData <- listOfSelected[2:3]
+comparisonsNames <- names(listOfData)
+universe <- mapped_genes
+ 
+for (i in 1:length(listOfData)){
+   genesIn <- listOfData[[i]]
+   comparison <- comparisonsNames[i]
+   enrich.result <- enrichPathway(gene = genesIn,
+                                  pvalueCutoff = 0.05,
+                                  readable = T,
+                                  pAdjustMethod = "BH",
+                                  organism = "human",
+                                  universe = universe)
+   
+   cat("##################################")
+   cat("\nComparison: ", comparison,"\n")
+   print(head(enrich.result))
+ 
+   if (length(rownames(enrich.result@result)) != 0) {
+   write.csv(as.data.frame(enrich.result), 
+              file =paste0("./results/","ReactomePA.Results.",comparison,".csv"), 
+              row.names = FALSE)
+   
+   pdf(file=paste0("./results/","ReactomePABarplot.",comparison,".pdf"))
+     print(barplot(enrich.result, showCategory = 15, font.size = 4, 
+             title = paste0("Reactome Pathway Analysis for ", comparison,". Barplot")))
+   dev.off()
+   
+   pdf(file = paste0("./results/","ReactomePAcnetplot.",comparison,".pdf"))
+     print(cnetplot(enrich.result, categorySize = "geneNum", schowCategory = 2, 
+          vertex.label.cex = 0.75))
+   dev.off()
+   }
+}
+```
+
+
+
+\begin{center}
+\includegraphics[width=10cm, height=10cm]{./results/ReactomePAcnetplot.Xm45vsXX46.pdf}
+
+{\small {\it {Fig.3: }}Red obtenida del análisis de enriquecimiento de Reactome en la lista obtenida de la comparación entre 45Xm y 46XX} 
+\end{center}
+
+\begin{center}
+\includegraphics[width=10cm, height=10cm]{./results/ReactomePAcnetplot.Xp45vsXX46.pdf}
+
+{\small {\it {Fig.4: }}Red obtenida del análisis de enriquecimiento de Reactome en la lista obtenida de la comparación entre 45Xp y 46XX} 
+\end{center}
+
+# \textcolor{bondiblue}{Discusión} \label{discusion}
+
+Finalmente, haremos una breve discusión sobre los resultados que hemos ido mostrando anteriormente. 
+
+Tras haber normalizado y filtrado nuestros datos, nos quedamos con un total de `5040` genes. Después, hicimos un modelo lineal con `limma` para identificar aquellos genes que estaban diferencialmente expresados (DEGs), quedándonos con los que mayores valores tenían. El siguiente paso fue anotar los resultados y comparar entre grupos. Esto, como ya comentamos, nos daba una tabla donde había 0 genes regulados aguas abajo y aguas arriba que presentaran expresión diferencial para `Xm45vsXp45`. A continuación, el diagrama de Venn mostraba unos grupos acordes con los resultados obtenidos en la tabla para la expresión diferencial. También realizamos un Heatmap para ver esos DEGs pero de forma más general.
+
+Finalmente, para la parte del análisis de significación biológica, que podría decirse, es el que más nos interesa, no pudimos comparar los genes de `Xm` y `Xp` ya que la lista para este grupo es `0`, pero sí pudimos compararlos con el cariotipo normal `XX`. Además, la red obtenida del análisis de enriquecimiento es altamente compleja, a pesar de que solo mostramos 2 categorías en esta (es decir, el número de términos enriquecidos que queremos mostrar).
+
+Por tanto, esto podría sugerir, que si bien existe diferencia entre los cariotipos `Xp` y `Xm` con el normal `XX` (tiene sentido, porque está faltando un cromosoma X entero), ya que como hemos visto en nuestros análisis, tenemos DEGs, entre los dos primeros cariotipos `Xp` y `Xm` parece que la diferencia no es significativa, al menos con los datos que hemos utilizado.
+
+\newpage
+
+# \textcolor{bondiblue}{Apéndice} \label{apendice}
+
+A continuación, se muestra el **código** empleado.
+
+**Selección de muestras**
+
+```{r eval=FALSE}
+setwd(".")
+dir.create("data")
+dir.create("results")
+
+selectSamples<- function (myID){
+set.seed(myID)
+selected <- c(sample(1:10, 6),11, sample(12:26, 5), sample(27:36,6))
+selected <- sort(selected)
+}
+
+mySelected <- selectSamples(77146010)
+targetsAll <-read.csv(file="targetsAll.csv", row.names = 1, head=TRUE)
+myTargets <- targetsAll[mySelected,]
+
+write.csv(myTargets, file = "./data/myTargets.csv")
+
+library(GEOquery)
+filePaths = getGEOSuppFiles("GSE46687")
+
+library(oligo)
+celFiles <- list.celfiles("./data2", full.names = TRUE)
+
+library(Biobase)
+my.targets <-read.AnnotatedDataFrame(file.path("./data2","myTargets.csv"),
+                                     header = TRUE, row.names = 1, sep=",") 
+
+rawData <- read.celfiles(celFiles, phenoData = my.targets)
+```
+
+> **1. Identificar qué grupos hay y a qué grupo pertenece cada muestra.**
+
+```{r, eval = FALSE}
+colnames(rawData) <- my.targets@data$X.title.
+head(rawData)
+```
+
+> **2. Exploración y control de calidad de los datos crudos**
+
+```{r eval=FALSE, message = FALSE}
+library(arrayQualityMetrics)
+arrayQualityMetrics(rawData)
+
+library(ggplot2)
+library(ggrepel)
+plotPCA3 <- function (datos, labels, factor, title, scale,colores, size = 1.5, 
+                      glineas = 0.25) {
+   data <- prcomp(t(datos),scale=scale)
+   # plot adjustments
+   dataDf <- data.frame(data$x)
+   Group <- factor
+   loads <- round(data$sdev^2/sum(data$sdev^2)*100,1)
+   # main plot
+   p1 <- ggplot(dataDf,aes(x=PC1, y=PC2)) +
+     theme_classic() +
+     geom_hline(yintercept = 0, color = "gray70") +
+     geom_vline(xintercept = 0, color = "gray70") +
+     geom_point(aes(color = Group), alpha = 0.55, size = 3) +
+     coord_cartesian(xlim = c(min(data$x[,1])-5,max(data$x[,1])+5)) +
+     scale_fill_discrete(name = "Group")
+   # avoiding labels superposition
+   p1 + geom_text_repel(aes(y = PC2 + 0.25, label = labels),segment.size = 0.25,
+                        size = size) + 
+     labs(x = c(paste("PC1",loads[1],"%")),y=c(paste("PC2",loads[2],"%"))) +  
+     ggtitle(paste("Principal Component Analysis for: ",title,sep=" "))+ 
+     theme(plot.title = element_text(hjust = 0.5)) +
+     scale_color_manual(values=colores)
+}
+
+
+plotPCA3(exprs(rawData), labels = myTargets$title, factor = myTargets$karyotype, 
+          title="Raw data", scale = FALSE, size = 3, 
+          colores = c("#9966CC", "#0095B6", "#960018"))
+```
+```{r, message = FALSE, eval=FALSE}
+boxplot(rawData, cex.axis=0.5, las=2,  which="all", 
+        col = c(rep("#960018", 6), rep("#9966CC", 6), rep("#0095B6", 6)),
+        main="Distribution of raw intensity values")
+```
+
+> **3. Normalización**
+
+```{r, eval = FALSE}
+eset_rma <- rma(rawData)
+```
+
+> **4. [Control de calidad de los datos normalizados] (opcional)**
+
+```{r eval=FALSE, message = FALSE, warning=FALSE,}
+arrayQualityMetrics(eset_rma, outdir = file.path("./results", "QCDir.Norm"),
+                    force=TRUE)
+
+plotPCA3(exprs(eset_rma), labels = myTargets$title, factor = myTargets$karyotype, 
+          title="Normalized data", scale = FALSE, size = 3, 
+          colores = c("#9966CC", "#0095B6", "#960018", "yellow"))
+
+boxplot(eset_rma, cex.axis=0.5, las=2,  which="all", 
+          col = c(rep("#960018", 6), rep("#9966CC", 6), rep("#0095B6", 6)),
+          main="Boxplot for arrays intensity: Normalized Data")
+```
+
+> **5. Filtraje no específico [opcional]**
+
+```{r, message = FALSE, eval=FALSE}
+library(genefilter)
+# BiocManager::install("hgu133plus2.db")
+library(hgu133plus2.db)
+annotation(eset_rma) <- "hgu133plus2.db"
+filtered <- nsFilter(eset_rma, 
+                      require.entrez = TRUE, remove.dupEntrez = TRUE,
+                      var.filter=TRUE, var.func=IQR, var.cutoff=0.75, 
+                      filterByQuantile=TRUE, feature.exclude = "^AFFX")
+
+print(filtered$filter.log)
+
+eset_filtered <-filtered$eset
+eset_filtered
+
+# Guardemos los datos en este punto.
+write.csv(exprs(eset_rma), file="./results/normalized.Data.csv")
+write.csv(exprs(eset_filtered), file="./results/normalized.Filtered.Data.csv")
+save(eset_rma, eset_filtered, file="./results/normalized.Data.Rda")
+```
+
+> **6. Identificación de genes diferencialmente expresados** 
+
+```{r, eval=FALSE}
+if (!exists("eset_filtered")) load (file="./results/normalized.Data.Rda")
+library(limma)
+designMat<- model.matrix(~0+X.karyotype., pData(eset_filtered))
+colnames(designMat) <- c("Xm45", "Xp45","XX46")
+print(designMat)
+
+cont.matrix <- makeContrasts (Xm45vsXp45 = Xm45-Xp45,
+                              Xm45vsXX46 = Xm45-XX46,
+                              Xp45vsXX46 = Xp45-XX46,
+                              levels=designMat)
+print(cont.matrix)
+
+library(limma)
+fit<-lmFit(eset_filtered, designMat)
+fit.main<-contrasts.fit(fit, cont.matrix)
+fit.main<-eBayes(fit.main)
+class(fit.main)
+
+topTab.Xm45vsXp45 <- topTable(fit.main, number=nrow(fit.main), coef="Xm45vsXp45", 
+                              adjust="fdr") 
+topTab.Xm45vsXX46 <- topTable(fit.main, number=nrow(fit.main), coef="Xm45vsXX46", 
+                              adjust="fdr") 
+topTab.Xp45vsXX46 <- topTable(fit.main, number=nrow(fit.main), coef="Xp45vsXX46", 
+                              adjust="fdr") 
+```
+
+> **7. Anotación de los resultados**
+
+```{r, eval = FALSE}
+annotatedTopTable <- function(topTab, anotPackage){
+   topTab <- cbind(PROBEID=rownames(topTab), topTab)
+   myProbes <- rownames(topTab)
+   thePackage <- eval(parse(text = anotPackage))
+   geneAnots <- select(thePackage, myProbes, c("SYMBOL", "ENTREZID", "GENENAME"))
+   annotatedTopTab<- merge(x=geneAnots, y=topTab, by.x="PROBEID", by.y="PROBEID")
+ return(annotatedTopTab)
+}
+
+topAnnotated.Xm45vsXp45 <- annotatedTopTable(topTab.Xm45vsXp45,
+anotPackage="hgu133plus2.db")
+topAnnotated.Xm45vsXX46 <- annotatedTopTable(topTab.Xm45vsXX46,
+anotPackage="hgu133plus2.db")
+topAnnotated.Xp45vsXX46 <- annotatedTopTable(topTab.Xp45vsXX46,
+anotPackage="hgu133plus2.db")
+
+write.csv(topAnnotated.Xm45vsXp45, file="./results/topAnnotated.Xm45vsXp45.csv")
+write.csv(topAnnotated.Xm45vsXX46, file="./results/topAnnotated.Xm45vsXX46.csv")
+write.csv(topAnnotated.Xp45vsXX46, file="./results/topAnnotated.Xp45vsXX46.csv")
+```
+
+> **8. Comparación entre distintas comparaciones (si hay más de una comparación, ver qué genes han sido seleccionados en más de una comparación)**
+
+```{r, eval = FALSE}
+library(limma)
+res<-decideTests(fit.main, method="separate", adjust.method="fdr", p.value=0.1, lfc=1)
+sum.res.rows<-apply(abs(res),1,sum)
+res.selected<-res[sum.res.rows!=0,] 
+print(summary(res))
+
+vennDiagram(res.selected, cex=0.9)
+title("Genes in common between the three comparisons\n 
+      Genes selected with FDR < 0.1 and logFC > 1")
+
+probesInHeatmap <- rownames(res.selected)
+HMdata <- exprs(eset_filtered)[rownames(exprs(eset_filtered)) %in% probesInHeatmap,]
+library(tidyselect)
+geneSymbols <- select(hgu133plus2.db, rownames(HMdata), c("SYMBOL"))
+SYMBOLS<- geneSymbols$SYMBOL
+rownames(HMdata) <- SYMBOLS
+write.csv(HMdata, file = file.path("./results/data4Heatmap.csv"))
+
+my_palette <- colorRampPalette(c("#0095B6", "#9966CC"))(n = 299)
+library(gplots)
+
+heatmap.2(HMdata,
+           Rowv = TRUE,
+           Colv = TRUE,
+           dendrogram = "both",
+           main = "Differentially expressed genes \n FDR < 0,1, logFC >=1",
+           scale = "row",
+           col = my_palette,
+           sepcolor = "white",
+           sepwidth = c(0.05,0.05),
+           cexRow = 0.5,
+           cexCol = 0.9,
+           key = TRUE,
+           keysize = 1.5,
+           density.info = "histogram",
+           ColSideColors = c(rep("#960018",6),rep("#9966CC",6), rep("#0095B6",6)),
+           tracecol = NULL,
+           srtCol = 30)
+```
+
+> **9. Análisis de significación biológica (“Gene Enrichment Analysis”)**
+
+```{r, eval = FALSE}
+listOfTables <- list(Xm45vsXp45 = topTab.Xm45vsXp45,
+                     Xm45vsXX46  = topTab.Xm45vsXX46,
+                     Xp45vsXX46 = topTab.Xp45vsXX46)
+
+listOfSelected <- list()
+
+for (i in 1:length(listOfTables)){
+   # select the toptable
+   topTab <- listOfTables[[i]]
+   # select the genes to be included in the analysis
+   whichGenes<-topTab["adj.P.Val"]<0.15
+   selectedIDs <- rownames(topTab)[whichGenes]
+   # convert the ID to Entrez
+   EntrezIDs<- select(hgu133plus2.db, selectedIDs, c("ENTREZID"))
+   EntrezIDs <- EntrezIDs$ENTREZID
+   listOfSelected[[i]] <- EntrezIDs
+   names(listOfSelected)[i] <- names(listOfTables)[i]
+}
+
+sapply(listOfSelected, length)
+
+mapped_genes2GO <- mappedkeys(org.Hs.egGO)
+mapped_genes2KEGG <- mappedkeys(org.Hs.egPATH)
+mapped_genes <- union(mapped_genes2GO , mapped_genes2KEGG)
+
+library(ReactomePA)
+ 
+listOfData <- listOfSelected[2:3]
+comparisonsNames <- names(listOfData)
+universe <- mapped_genes
+ 
+for (i in 1:length(listOfData)){
+   genesIn <- listOfData[[i]]
+   comparison <- comparisonsNames[i]
+   enrich.result <- enrichPathway(gene = genesIn,
+                                  pvalueCutoff = 0.05,
+                                  readable = T,
+                                  pAdjustMethod = "BH",
+                                  organism = "human",
+                                  universe = universe)
+   
+   cat("##################################")
+   cat("\nComparison: ", comparison,"\n")
+   print(head(enrich.result))
+ 
+   if (length(rownames(enrich.result@result)) != 0) {
+   write.csv(as.data.frame(enrich.result), 
+              file =paste0("./results/","ReactomePA.Results.",comparison,".csv"), 
+              row.names = FALSE)
+   
+   pdf(file=paste0("./results/","ReactomePABarplot.",comparison,".pdf"))
+     print(barplot(enrich.result, showCategory = 15, font.size = 4, 
+             title = paste0("Reactome Pathway Analysis for ", comparison,
+                            ". Barplot")))
+   dev.off()
+   
+   pdf(file = paste0("./results/","ReactomePAcnetplot.",comparison,".pdf"))
+     print(cnetplot(enrich.result, categorySize = "geneNum", schowCategory = 15, 
+          vertex.label.cex = 0.75))
+   dev.off()
+   }
+ }
+```
